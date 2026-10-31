@@ -74,9 +74,11 @@ No campus events, deadlines, or exams are currently recorded for this upcoming w
         )
         .join('\n');
 
+      const hasKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+
       const fallbackDigest = `### 🎯 Weekly Campus Briefing (${count} scheduled item${count > 1 ? 's' : ''})
 
-> **Heads Up:** Showing local structured digest (${!process.env.GEMINI_API_KEY ? 'Add GEMINI_API_KEY in .env.local for full AI synthesis' : 'Gemini offline'}).
+> **Heads Up:** Showing local structured digest (${!hasKey ? 'Add GEMINI_API_KEY in .env.local for full AI synthesis' : 'Gemini offline'}).
 
 #### 🚨 Key Upcoming Deadlines & Events
 ${prioritiesList}

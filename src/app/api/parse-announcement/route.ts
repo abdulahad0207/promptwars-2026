@@ -34,8 +34,10 @@ export async function POST(req: NextRequest) {
       const errorMsg = geminiError instanceof Error ? geminiError.message : String(geminiError);
       console.warn('Gemini extraction failed, evaluating fallback:', errorMsg);
 
+      const hasKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+
       // If user allowed heuristic fallback or if API key is missing
-      if (allowFallback || !process.env.GEMINI_API_KEY) {
+      if (allowFallback || !hasKey) {
         const fallbackResult = heuristicExtract(
           validation.sanitized,
           clientTime ? new Date(clientTime) : new Date()
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
           success: true,
           data: fallbackResult,
           source: 'heuristic',
-          notice: !process.env.GEMINI_API_KEY
+          notice: !hasKey
             ? 'GEMINI_API_KEY not configured on server; parsed with local smart heuristic.'
             : 'Gemini request encountered an issue; parsed with smart heuristic.',
         });

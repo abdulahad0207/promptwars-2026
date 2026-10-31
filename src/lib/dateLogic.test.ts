@@ -5,6 +5,7 @@ import {
   evaluateEventStatus,
   getEventsNeedingAttentionToday,
   sortEvents,
+  formatFriendlyDate,
   isEventInCurrentWeek,
   generateGoogleCalendarUrl,
   generateIcsData,
@@ -33,9 +34,26 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(normalized?.getHours()).toBe(0);
     });
 
-    it('returns null for invalid strings', () => {
+    it('returns null for empty or whitespace-only inputs', () => {
       expect(normalizeDateToStartOfDay('')).toBeNull();
+      expect(normalizeDateToStartOfDay('   ')).toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(normalizeDateToStartOfDay(null as any)).toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(normalizeDateToStartOfDay(undefined as any)).toBeNull();
+    });
+
+    it('returns null for completely invalid date strings', () => {
       expect(normalizeDateToStartOfDay('invalid-date-string')).toBeNull();
+      expect(normalizeDateToStartOfDay('not-a-date')).toBeNull();
+      expect(normalizeDateToStartOfDay('2026-99-99')).toBeNull();
+    });
+
+    it('handles valid leap year date (2024-02-29)', () => {
+      const leapDay = normalizeDateToStartOfDay('2024-02-29');
+      expect(leapDay).not.toBeNull();
+      expect(leapDay?.getMonth()).toBe(1); // February
+      expect(leapDay?.getDate()).toBe(29);
     });
   });
 
@@ -53,10 +71,18 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(parseStartTime('08:15')).toEqual({ hours: 8, minutes: 15 });
     });
 
-    it('returns null for non-time strings or empty values', () => {
+    it('returns null for non-time strings, empty, or whitespace values', () => {
       expect(parseStartTime('TBD')).toBeNull();
       expect(parseStartTime('All Day')).toBeNull();
+      expect(parseStartTime('')).toBeNull();
+      expect(parseStartTime('   ')).toBeNull();
       expect(parseStartTime(undefined)).toBeNull();
+    });
+
+    it('returns null for out-of-range times', () => {
+      expect(parseStartTime('25:00')).toBeNull();
+      expect(parseStartTime('12:99')).toBeNull();
+      expect(parseStartTime('-05:00')).toBeNull();
     });
   });
 
@@ -72,13 +98,17 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(res.formattedCountdown).toBe('Happening today');
     });
 
-    it('flags today events past elapsed time + grace period as expired', () => {
-      // Event was at 8:00 AM today, reference is 11:30 AM (> 1 hour grace period)
-      const res = evaluateEventStatus('2026-10-31', '8:00 AM', mockNow);
-      expect(res.status).toBe('expired');
-      expect(res.isExpired).toBe(true);
-      expect(res.isToday).toBe(false);
-      expect(res.formattedCountdown).toBe('Ended today');
+    it('allows 1-hour grace period for today events before marking expired', () => {
+      // Event was at 11:00 AM today, reference is 11:30 AM (30 min elapsed < 1h grace)
+      const activeRes = evaluateEventStatus('2026-10-31', '11:00 AM', mockNow);
+      expect(activeRes.status).toBe('today');
+      expect(activeRes.isExpired).toBe(false);
+
+      // Event was at 9:00 AM today, reference is 11:30 AM (2.5h elapsed > 1h grace)
+      const expiredRes = evaluateEventStatus('2026-10-31', '9:00 AM', mockNow);
+      expect(expiredRes.status).toBe('expired');
+      expect(expiredRes.isExpired).toBe(true);
+      expect(expiredRes.formattedCountdown).toBe('Ended today');
     });
 
     it('flags tomorrow (1 day ahead) as urgent', () => {
@@ -121,11 +151,37 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(resLastWeek.formattedCountdown).toBe('7 days ago');
     });
 
-    it('safely handles missing or corrupted date strings', () => {
-      const res = evaluateEventStatus('unknown date', undefined, mockNow);
+    it('safely handles empty string or missing date without throwing', () => {
+      const resEmpty = evaluateEventStatus('', undefined, mockNow);
+      expect(resEmpty.status).toBe('upcoming');
+      expect(resEmpty.isExpired).toBe(false);
+      expect(resEmpty.formattedCountdown).toBe('Date unconfirmed');
+
+      const resWhitespace = evaluateEventStatus('   ', undefined, mockNow);
+      expect(resWhitespace.status).toBe('upcoming');
+      expect(resWhitespace.formattedCountdown).toBe('Date unconfirmed');
+    });
+
+    it('safely handles malformed and invalid date strings', () => {
+      const res = evaluateEventStatus('unknown date string', undefined, mockNow);
       expect(res.status).toBe('upcoming');
       expect(res.isExpired).toBe(false);
       expect(res.formattedCountdown).toBe('Date unconfirmed');
+    });
+  });
+
+  describe('formatFriendlyDate', () => {
+    it('formats standard YYYY-MM-DD cleanly', () => {
+      const formatted = formatFriendlyDate('2026-11-05');
+      expect(formatted).toContain('Nov');
+      expect(formatted).toContain('5');
+      expect(formatted).toContain('2026');
+    });
+
+    it('falls back gracefully on empty or invalid date strings', () => {
+      expect(formatFriendlyDate('')).toBe('Date TBD');
+      expect(formatFriendlyDate('   ')).toBe('Date TBD');
+      expect(formatFriendlyDate('invalid')).toBe('invalid');
     });
   });
 
@@ -182,6 +238,10 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(attentionItems.length).toBe(1);
       expect(attentionItems[0].id).toBe('1');
       expect(attentionItems[0].title).toBe('Morning Lab');
+    });
+
+    it('returns empty array when passed an empty events list', () => {
+      expect(getEventsNeedingAttentionToday([], mockNow)).toEqual([]);
     });
   });
 
@@ -274,6 +334,12 @@ describe('Campus Pulse Date & Priority Logic', () => {
       const sorted = sortEvents(withPinned, 'priority', mockNow);
       expect(sorted[0].id).toBe('pinned-future');
     });
+
+    it('sorts by recently added when specified', () => {
+      const sorted = sortEvents(events, 'recent', mockNow);
+      expect(sorted[0].id).toBe('today'); // created on 10-29
+      expect(sorted[sorted.length - 1].id).toBe('exp'); // created on 10-20
+    });
   });
 
   describe('isEventInCurrentWeek', () => {
@@ -286,6 +352,11 @@ describe('Campus Pulse Date & Priority Logic', () => {
     it('returns false for events beyond 7 days or past', () => {
       expect(isEventInCurrentWeek('2026-11-08', mockNow)).toBe(false); // in 8 days
       expect(isEventInCurrentWeek('2026-10-30', mockNow)).toBe(false); // yesterday
+    });
+
+    it('returns false for empty or invalid date strings', () => {
+      expect(isEventInCurrentWeek('', mockNow)).toBe(false);
+      expect(isEventInCurrentWeek('invalid-date', mockNow)).toBe(false);
     });
   });
 
@@ -307,6 +378,11 @@ describe('Campus Pulse Date & Priority Logic', () => {
       expect(url).toContain('https://calendar.google.com/calendar/render');
       expect(url).toContain('CS+101+Midterm+Exam');
       expect(url).toContain('20261105T140000');
+    });
+
+    it('handles Google Calendar URL for event with missing/invalid date gracefully', () => {
+      const badEvent: CampusEvent = { ...sampleEvent, date: '' };
+      expect(generateGoogleCalendarUrl(badEvent)).toBe('#');
     });
 
     it('generates a valid .ics calendar payload', () => {

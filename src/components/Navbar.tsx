@@ -9,7 +9,6 @@ import {
   RotateCcw,
   Download,
   Trash2,
-  Calendar,
   Radio,
 } from 'lucide-react';
 
@@ -54,6 +53,15 @@ export default function Navbar({
               <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold tracking-wider text-blue-700 bg-blue-50 border border-blue-200 rounded-md uppercase">
                 Student AI Hub
               </span>
+              {todayCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 rounded-full animate-pulse"
+                  title={`${todayCount} item${todayCount > 1 ? 's' : ''} need attention today`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                  {todayCount} Today
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
               Messy messages &rarr; Instant structured schedule

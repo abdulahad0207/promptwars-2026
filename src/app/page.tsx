@@ -7,6 +7,7 @@ import {
   getEventsNeedingAttentionToday,
   sortEvents,
 } from '@/lib/dateLogic';
+import { addEventWithDeduplication } from '@/lib/eventOperations';
 import {
   getStoredEvents,
   saveStoredEvents,
@@ -26,7 +27,6 @@ import {
   CalendarSearch,
   Plus,
   RotateCcw,
-  Sparkles,
   Inbox,
   FilterX,
 } from 'lucide-react';
@@ -51,13 +51,19 @@ export default function CampusPulsePage() {
 
   // Hydrate from localStorage on client mount
   useEffect(() => {
-    setCurrentDate(new Date());
-    const loaded = getStoredEvents();
-    setEvents(loaded);
-    setIsLoaded(true);
+    const initTimer = setTimeout(() => {
+      setCurrentDate(new Date());
+      const loaded = getStoredEvents();
+      setEvents(loaded);
+      setIsLoaded(true);
+    }, 0);
 
-    const timer = setInterval(() => setCurrentDate(new Date()), 60000);
-    return () => clearInterval(timer);
+    const intervalTimer = setInterval(() => setCurrentDate(new Date()), 60000);
+
+    return () => {
+      clearTimeout(initTimer);
+      clearInterval(intervalTimer);
+    };
   }, []);
 
   // Save to localStorage whenever events change (after initial mount)
@@ -103,7 +109,10 @@ export default function CampusPulsePage() {
       id: `evt-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       createdAt: new Date().toISOString(),
     };
-    setEvents((prev) => [newEvent, ...prev]);
+    setEvents((prev) => {
+      const result = addEventWithDeduplication(prev, newEvent, { replaceExisting: true });
+      return result.events;
+    });
   }, []);
 
   const handleDeleteEvent = useCallback((id: string) => {

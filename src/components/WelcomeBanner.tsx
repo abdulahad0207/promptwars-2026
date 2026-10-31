@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Sparkles, MessageSquareDashed, ArrowRight, X, CalendarCheck, Zap } from 'lucide-react';
+import { Sparkles, MessageSquareDashed, ArrowRight, X, Zap } from 'lucide-react';
 
 interface WelcomeBannerProps {
   onOpenPasteModal: () => void;

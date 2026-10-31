@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { CampusEvent } from '@/types';
 import { isEventInCurrentWeek } from '@/lib/dateLogic';
 import {
@@ -11,10 +11,8 @@ import {
   Copy,
   Check,
   RotateCw,
-  Calendar,
   Loader2,
   AlertCircle,
-  Share2,
 } from 'lucide-react';
 
 interface WeeklyDigestModalProps {
@@ -29,11 +27,19 @@ export default function WeeklyDigestModal({ isOpen, onClose, events }: WeeklyDig
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const hasTriggeredInitialFetch = useRef(false);
 
   // Filter events within this week (next 7 days)
   const thisWeekEvents = events.filter((e) => isEventInCurrentWeek(e.date));
 
-  const fetchDigest = async () => {
+  const stopSpeech = useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, []);
+
+  const fetchDigest = useCallback(async () => {
     setLoading(true);
     setError(null);
     setDigest(null);
@@ -59,40 +65,46 @@ export default function WeeklyDigestModal({ isOpen, onClose, events }: WeeklyDig
     } finally {
       setLoading(false);
     }
-  };
+  }, [thisWeekEvents]);
 
   // Auto-fetch when modal opens if not already fetched
   useEffect(() => {
-    if (isOpen && !digest && !loading) {
-      fetchDigest();
+    if (isOpen && !digest && !loading && !hasTriggeredInitialFetch.current) {
+      hasTriggeredInitialFetch.current = true;
+      const timer = setTimeout(() => {
+        fetchDigest();
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+    if (!isOpen) {
+      hasTriggeredInitialFetch.current = false;
+    }
+  }, [isOpen, digest, loading, fetchDigest]);
+
+  const handleClose = useCallback(() => {
+    stopSpeech();
+    onClose();
+  }, [stopSpeech, onClose]);
 
   // Handle escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        stopSpeech();
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
-  // Stop speech when modal closes
+  // Cancel speech on unmount
   useEffect(() => {
-    if (!isOpen) {
-      stopSpeech();
-    }
-  }, [isOpen]);
-
-  const stopSpeech = () => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
-  };
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleToggleSpeech = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -175,10 +187,7 @@ export default function WeeklyDigestModal({ isOpen, onClose, events }: WeeklyDig
 
             <button
               type="button"
-              onClick={() => {
-                stopSpeech();
-                onClose();
-              }}
+              onClick={handleClose}
               aria-label="Close weekly briefing"
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
             >
@@ -313,7 +322,7 @@ export default function WeeklyDigestModal({ isOpen, onClose, events }: WeeklyDig
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
                   <span>Copy Briefing</span>
                 </>
               )}
@@ -322,10 +331,7 @@ export default function WeeklyDigestModal({ isOpen, onClose, events }: WeeklyDig
 
           <button
             type="button"
-            onClick={() => {
-              stopSpeech();
-              onClose();
-            }}
+            onClick={handleClose}
             className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900"
           >
             Close (Esc)

@@ -1,4 +1,4 @@
-import { CampusEvent, EventCategory, EventStatusEvaluation, UrgencyStatus } from '@/types';
+import { CampusEvent, EventStatusEvaluation, UrgencyStatus } from '@/types';
 
 /**
  * Normalizes any date string (ISO, YYYY-MM-DD, readable text) to a clean Date object at start of day (00:00:00).
@@ -14,19 +14,30 @@ export function normalizeDateToStartOfDay(dateInput: string | Date): Date | null
   }
 
   const str = dateInput.trim();
+  if (!str) return null;
+
   // Handle YYYY-MM-DD
-  const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (ymdMatch) {
     const year = parseInt(ymdMatch[1], 10);
     const month = parseInt(ymdMatch[2], 10) - 1;
     const day = parseInt(ymdMatch[3], 10);
+    if (month < 0 || month > 11 || day < 1 || day > 31) {
+      return null;
+    }
     const d = new Date(year, month, day, 0, 0, 0, 0);
-    return isNaN(d.getTime()) ? null : d;
+    if (isNaN(d.getTime())) return null;
+    // Prevent invalid day rollover (e.g. Feb 31 -> Mar 3)
+    if (d.getFullYear() !== year || d.getMonth() !== month || d.getDate() !== day) {
+      return null;
+    }
+    return d;
   }
 
   // Fallback to standard Date parsing
   const parsed = new Date(str);
   if (isNaN(parsed.getTime())) return null;
+  if (parsed.getFullYear() < 1900 || parsed.getFullYear() > 2200) return null;
   parsed.setHours(0, 0, 0, 0);
   return parsed;
 }
@@ -260,8 +271,11 @@ export function sortEvents(
  * e.g. "Monday, Nov 2, 2026"
  */
 export function formatFriendlyDate(dateStr: string): string {
-  const d = normalizeDateToStartOfDay(dateStr);
-  if (!d) return dateStr || 'Date TBD';
+  const trimmed = (dateStr || '').trim();
+  if (!trimmed) return 'Date TBD';
+
+  const d = normalizeDateToStartOfDay(trimmed);
+  if (!d) return trimmed;
 
   return d.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -278,6 +292,10 @@ export function isEventInCurrentWeek(
   dateStr: string,
   referenceDate?: Date
 ): boolean {
+  if (!dateStr || !dateStr.trim()) return false;
+  const d = normalizeDateToStartOfDay(dateStr);
+  if (!d) return false;
+
   const ref = resolveReferenceDate(referenceDate);
   const evalResult = evaluateEventStatus(dateStr, undefined, ref);
   return !evalResult.isExpired && evalResult.daysDiff >= 0 && evalResult.daysDiff <= 7;
