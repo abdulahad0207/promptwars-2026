@@ -113,6 +113,8 @@ npm start
 ```
 
 ---
+## 🌐 Live Demo
+https://promptwars-2026-chi.vercel.app
 
 ## ☁️ Deploy on Vercel
 
